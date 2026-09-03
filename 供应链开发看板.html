@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>供应链综合看板 · 暖色规范 · 数据增强版</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #E8734A;
+            --primary-light: #FDEEE8;
+            --secondary: #F5A623;
+            --accent: #D4553B;
+            --bg: #FFF9F5;
+            --card-bg: #FFFFFF;
+            --text: #3D2C2C;
+            --text-light: #8B7355;
+            --border: #F0E0D6;
+            --success: #4CAF50;
+            --warning: #FF9800;
+            --danger: #F44336;
+            --info: #2196F3;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999; flex-direction: column; gap: 16px;
+        }
+        .loading-overlay.hidden { display: none; }
+        .spinner {
+            width: 48px; height: 48px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .header {
+            background: linear-gradient(135deg, #E8734A 0%, #D4553B 100%);
+            color: white; padding: 20px 32px;
+            display: flex; align-items: center; justify-content: space-between;
+            flex-wrap: wrap; gap: 12px;
+            box-shadow: 0 2px 12px rgba(232,115,74,0.3);
+        }
+        .header h1 { font-size: 22px; font-weight: 700; }
+        .header .subtitle { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+        .header-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 8px;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-import {
+            background: linear-gradient(135deg, #FF8C42, #FF6B35);
+            color: white;
+            box-shadow: 0 3px 10px rgba(255,107,53,0.4);
+        }
+        .btn-import:hover {
+            background: linear-gradient(135deg, #FF9F5A, #FF7E4D);
+            transform: translateY(-1px);
+            box-shadow: 0 5px 15px rgba(255,107,53,0.5);
+        }
+        .btn-refresh {
+            background: linear-gradient(135deg, #66BB6A, #43A047);
+            color: white;
+            box-shadow: 0 3px 10px rgba(76,175,80,0.3);
+        }
+        .btn-refresh:hover { transform: translateY(-1px); }
+        .btn-export {
+            background: linear-gradient(135deg, #42A5F5, #1E88E5);
+            color: white;
+            box-shadow: 0 3px 10px rgba(33,150,243,0.3);
+        }
+        .btn-export:hover { transform: translateY(-1px); }
+        .btn-pdf {
+            background: linear-gradient(135deg, #AB47BC, #8E24AA);
+            color: white;
+            box-shadow: 0 3px 10px rgba(171,71,188,0.3);
+        }
+        .btn-pdf:hover { transform: translateY(-1px); }
+        .export-btn {
+            background: linear-gradient(135deg, #42A5F5, #1E88E5);
+            color: white; border: none; border-radius: 6px;
+            padding: 4px 12px; font-size: 12px; font-weight: 600;
+            cursor: pointer; margin-left: 12px; vertical-align: middle;
+        }
+        .export-btn:hover { opacity: 0.85; }
+        .btn-trend {
+            background: linear-gradient(135deg, #FFA726, #FB8C00);
+            color: white;
+            box-shadow: 0 3px 10px rgba(255,167,38,0.3);
+        }
+        .btn-trend:hover { transform: translateY(-1px); }
+        .status-bar {
+            background: var(--card-bg); padding: 10px 32px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 16px;
+            font-size: 13px; color: var(--text-light);
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--success); display: inline-block;
+        }
+        .status-dot.warning { background: var(--warning); }
+        .status-dot.error { background: var(--danger); }
+        .nav-tabs {
+            display: flex; gap: 0; padding: 0 32px;
+            background: var(--card-bg); border-bottom: 2px solid var(--border);
+        }
+        .nav-tab {
+            padding: 14px 24px; font-size: 14px; font-weight: 600;
+            color: var(--text-light); text-decoration: none;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        .nav-tab:hover { color: var(--primary); }
+        .nav-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        .main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+        .section {
+            background: var(--card-bg); border-radius: 16px;
+            padding: 28px; margin-bottom: 24px;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.04);
+            border: 1px solid var(--border);
+        }
+        .section-title {
+            font-size: 18px; font-weight: 700; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .metrics-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px; margin-bottom: 24px;
+        }
+        .metric-card {
+            background: var(--primary-light); border-radius: 12px;
+            padding: 16px; text-align: center;
+            border: 1px solid rgba(232,115,74,0.1);
+        }
+        .metric-card .value {
+            font-size: 24px; font-weight: 800; color: var(--primary);
+        }
+        .metric-card .label {
+            font-size: 12px; color: var(--text-light); margin-top: 4px;
+        }
+        .metric-card.warning .value { color: var(--warning); }
+        .metric-card.danger .value { color: var(--danger); }
+        .metric-card.success .value { color: var(--success); }
+        .charts-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px; margin-bottom: 24px;
+        }
+        .chart-box {
+            background: var(--bg); border-radius: 12px; padding: 16px;
+            border: 1px solid var(--border);
+        }
+        .chart-box h4 {
+            font-size: 13px; color: var(--text-light); margin-bottom: 12px;
+            text-align: center;
+        }
+        .chart-box canvas { max-height: 260px; }
+        .data-table-wrap {
+            overflow-x: auto; margin-top: 16px;
+            border-radius: 12px; border: 1px solid var(--border);
+        }
+        .data-table {
+            width: 100%; border-collapse: collapse; font-size: 12px;
+        }
+        .data-table th {
+            background: linear-gradient(135deg, #FFF3ED, #FDEEE8);
+            padding: 10px 12px; text-align: left; font-weight: 600;
+            color: var(--text); border-bottom: 2px solid var(--border);
+            white-space: nowrap; position: sticky; top: 0;
+        }
+        .data-table td {
+            padding: 8px 12px; border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        .data-table tr:hover td { background: var(--primary-light); }
+        .badge {
+            padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+        }
+        .badge-p0 { background: #FFEBEE; color: #D32F2F; }
+        .badge-p1 { background: #FFF3E0; color: #E65100; }
+        .badge-p2 { background: #FFF8E1; color: #F57F17; }
+        .badge-ok { background: #E8F5E9; color: #2E7D32; }
+        .badge-warn { background: #FFF3E0; color: #EF6C00; }
+        .badge-delay { background: #FFEBEE; color: #C62828; }
+        .note-box {
+            background: #FFFDE7; border: 1px solid #FFF9C4;
+            border-radius: 8px; padding: 12px 16px;
+            font-size: 12px; color: #795548; margin-top: 16px;
+            line-height: 1.8;
+        }
+        .hidden-input { display: none; }
+        .toast {
+            position: fixed; top: 84px; right: 32px; z-index: 9998;
+            background: #fff; border: 1px solid var(--border);
+            border-radius: 10px; padding: 14px 20px; max-width: 360px;
+            font-size: 13px; line-height: 1.6;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+            transform: translateX(130%); transition: transform 0.3s ease;
+        }
+        .toast.show { transform: translateX(0); }
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--danger); }
+        .section-note { font-size: 12px; color: var(--text-light); margin-top: 8px; }
+        .cmp-up { color: var(--danger); font-weight: 700; }
+        .cmp-down { color: var(--success); font-weight: 700; }
+        .cmp-flat { color: var(--text-light); }
+        @media (max-width: 768px) {
+            .header { padding: 16px; }
+            .main { padding: 16px; }
+            .section { padding: 16px; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div style="color: var(--text-light); font-size: 14px;">正在加载看板...</div>
+    </div>
+
+    <div class="header">
+        <div>
+            <h1>📊 供应链综合看板</h1>
+            <div class="subtitle">暖色规范 · 数据增强版</div>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-refresh" onclick="clearAllData()" title="清空所有已导入数据与历史对比快照">🔄 刷新数据</button>
+            <button class="btn btn-import" onclick="triggerImport()" title="可同时选择采购单、采购入库管理、库存查询三个Excel文件">📥 导入数据</button>
+            <button class="btn btn-export" onclick="exportExcel()">📊 导出Excel</button>
+            <button class="btn btn-pdf" onclick="exportPDF()">📄 导出PDF</button>
+            <span style="font-size:13px; opacity:0.8;">📅 <span id="currentDate"></span></span>
+            <input type="file" id="fileInput" class="hidden-input" multiple
+                   accept=".xlsx,.xls" onchange="handleFileImport(event)">
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">等待导入数据...</span>
+        <span style="margin-left:auto;">● 已加载记录: <strong id="recordCount">0</strong></span>
+    </div>
+
+    <div class="nav-tabs">
+        <a href="#inventory" class="nav-tab active">📈 库存健康度</a>
+        <a href="#todo" class="nav-tab">🛒 待下单清单</a>
+        <a href="#intransit" class="nav-tab">🚚 在途跟单</a>
+        <a href="#warehouse" class="nav-tab">💰 仓库货值</a>
+        <a href="#compareSection" class="nav-tab">📊 数据对比</a>
+    </div>
+
+    <div class="main">
+        <!-- 数据对比（连续导入两次后自动呈现） -->
+        <div class="section" id="compareSection" style="display:none;">
+            <div class="section-title">📊 重要数据对比 <span style="font-size:12px;color:var(--text-light);font-weight:400;" id="compareLabel"></span></div>
+            <div class="note-box" style="margin-bottom:16px;">
+                连续导入两次数据后，自动对比「上一次导入」与「本次导入」的关键指标。<span class="cmp-up">红色=上升</span>，<span class="cmp-down">绿色=下降</span>。快照已持久化到浏览器 IndexedDB，刷新页面后仍可查看。
+            </div>
+            <h4 style="font-size:14px;">关键指标对比</h4>
+            <div class="data-table-wrap">
+                <table class="data-table" id="compareTable">
+                    <thead><tr>
+                        <th>指标</th><th>上一次</th><th>本次</th><th>变化量</th><th>变化率</th>
+                    </tr></thead>
+                    <tbody id="compareTableBody"></tbody>
+                </table>
+            </div>
+            <h4 style="font-size:14px; margin-top:20px;">SKU 变动概览</h4>
+            <div class="metrics-grid">
+                <div class="metric-card"><div class="value" id="cmpSkuAdded">--</div><div class="label">新增SKU数</div></div>
+                <div class="metric-card warning"><div class="value" id="cmpSkuRemoved">--</div><div class="label">消失SKU数</div></div>
+            </div>
+            <div class="data-table-wrap">
+                <table class="data-table" id="cmpSkuTable">
+                    <thead><tr>
+                        <th>货品编码</th><th>货品名称</th><th>正品库存变化</th><th>货值变化</th>
+                    </tr></thead>
+                    <tbody id="cmpSkuBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 库存健康度 -->
+        <div class="section" id="inventory">
+            <div class="section-title">📈 库存健康度</div>
+            <div class="metrics-grid" id="inventoryMetrics">
+                <div class="metric-card"><div class="value" id="invValue">--</div><div class="label">现有库存货值</div></div>
+                <div class="metric-card"><div class="value" id="invTotalValue">--</div><div class="label">总库存货值(含在途)</div></div>
+                <div class="metric-card"><div class="value" id="invSkuCount">--</div><div class="label">有效SKU数</div></div>
+                <div class="metric-card warning"><div class="value" id="invStagnantCount">--</div><div class="label">零库存SKU数</div></div>
+                <div class="metric-card danger"><div class="value" id="invNegativeCount">--</div><div class="label">负库存SKU数</div></div>
+                <div class="metric-card success"><div class="value" id="invHealthyCount">--</div><div class="label">健康SKU数(库存>0)</div></div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-box"><h4>库存状态分布 (SKU)</h4><canvas id="chartInvStatus"></canvas></div>
+                <div class="chart-box"><h4>仓库库存分布</h4><canvas id="chartWarehouse"></canvas></div>
+                <div class="chart-box"><h4>库存货值TOP10 (万元)</h4><canvas id="chartInvTop10"></canvas></div>
+            </div>
+            <div class="note-box">
+                <strong>口径说明：</strong><br>
+                现有库存货值 = Σ(正品库存 × 成本价)；有效SKU = 库存查询表中全部记录；<br>
+                零库存 = 可用库存≤0且正品库存≤0；负库存 = 可用库存<0；健康 = 可用库存>0。<br>
+                数据全部来源于「库存查询」导入文件。
+            </div>
+            <h4 style="margin-top:20px; font-size:14px;">库存明细表 <span style="font-size:12px;color:var(--text-light);">(按货值降序，展示前30行)</span><button class="export-btn" onclick="exportModuleCSV('inventory')">⬇ 导出CSV</button></h4>
+            <div class="data-table-wrap">
+                <table class="data-table" id="inventoryTable">
+                    <thead><tr>
+                        <th>货品编码</th><th>货品名称</th><th>规格名称</th><th>仓库</th>
+                        <th>可用库存</th><th>正品库存</th><th>次品库存</th><th>采购在途</th>
+                        <th>成本价</th><th>货值(元)</th>
+                    </tr></thead>
+                    <tbody id="inventoryTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 待下单清单 -->
+        <div class="section" id="todo">
+            <div class="section-title">🛒 待下单清单</div>
+            <div class="metrics-grid" id="todoMetrics">
+                <div class="metric-card danger"><div class="value" id="todoP0">--</div><div class="label">P0紧急(负库存)</div></div>
+                <div class="metric-card warning"><div class="value" id="todoP1">--</div><div class="label">P1高优(零库存+有在途需求)</div></div>
+                <div class="metric-card"><div class="value" id="todoP2">--</div><div class="label">P2中优(待采购量>0)</div></div>
+                <div class="metric-card"><div class="value" id="todoTotal">--</div><div class="label">待下单合计</div></div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-box"><h4>采购优先级分布</h4><canvas id="chartPriority"></canvas></div>
+                <div class="chart-box"><h4>各优先级待采购量合计</h4><canvas id="chartPriorityQty"></canvas></div>
+            </div>
+            <div class="note-box">
+                <strong>优先级规则：</strong><br>
+                P0 = 可用库存 < 0（负库存紧急补货）；<br>
+                P1 = 可用库存 = 0 且 待采购量 > 0（零库存有需求）；<br>
+                P2 = 待采购量 > 0 且 可用库存 > 0（库存偏低需补货）。<br>
+                建议采购量 = 待采购量。数据来源于「库存查询」导入文件。
+            </div>
+            <h4 style="margin-top:20px; font-size:14px;">待采购SKU明细表 <span style="font-size:12px;color:var(--text-light);">(展示前30行)</span><button class="export-btn" onclick="exportModuleCSV('todo')">⬇ 导出CSV</button></h4>
+            <div class="data-table-wrap">
+                <table class="data-table" id="todoTable">
+                    <thead><tr>
+                        <th>优先级</th><th>货品编码</th><th>货品名称</th><th>规格名称</th>
+                        <th>可用库存</th><th>正品库存</th><th>待采购量</th><th>采购在途</th><th>成本价</th>
+                    </tr></thead>
+                    <tbody id="todoTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 在途跟单 -->
+        <div class="section" id="intransit">
+            <div class="section-title">🚚 在途跟单 (已审核/部分入库未完成)</div>
+            <div class="metrics-grid" id="transitMetrics">
+                <div class="metric-card"><div class="value" id="transitOrders">--</div><div class="label">在途采购单数</div></div>
+                <div class="metric-card"><div class="value" id="transitAmount">--</div><div class="label">在途采购金额</div></div>
+                <div class="metric-card warning"><div class="value" id="transitDelayed">--</div><div class="label">延迟未入库明细数</div></div>
+                <div class="metric-card danger"><div class="value" id="transitDelayedOrders">--</div><div class="label">延迟单数</div></div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-box"><h4>采购单状态分布</h4><canvas id="chartOrderStatus"></canvas></div>
+                <div class="chart-box"><h4>在途金额按供应商TOP10 (万元)</h4><canvas id="chartTransitSupplier"></canvas></div>
+            </div>
+            <div class="note-box">
+                <strong>口径说明：</strong><br>
+                在途 = 采购单状态为「已审核」或「部分入库」且未完全入库的订单；<br>
+                延迟 = 预计到货时间已过但仍未完全入库（入库正品数量 < 采购数量）；<br>
+                数据来源于「采购单」导入文件，入库信息参考「采购入库管理」导入文件。
+            </div>
+            <h4 style="margin-top:20px; font-size:14px;">在途订单明细表 <span style="font-size:12px;color:var(--text-light);">(展示前30行)</span><button class="export-btn" onclick="exportModuleCSV('transit')">⬇ 导出CSV</button></h4>
+            <div class="data-table-wrap">
+                <table class="data-table" id="transitTable">
+                    <thead><tr>
+                        <th>采购单号</th><th>货品名称</th><th>规格名称</th><th>采购数量</th>
+                        <th>已入库数量</th><th>采购金额</th><th>采购单状态</th><th>供应商</th>
+                        <th>采购时间</th><th>预计到货</th><th>延迟天数</th>
+                    </tr></thead>
+                    <tbody id="transitTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 仓库货值 -->
+        <div class="section" id="warehouse">
+            <div class="section-title">💰 仓库货值</div>
+            <div class="metrics-grid" id="warehouseMetrics">
+                <div class="metric-card"><div class="value" id="whCurrentValue">--</div><div class="label">现有库存货值</div></div>
+                <div class="metric-card"><div class="value" id="whTransitValue">--</div><div class="label">在途货值(采购单)</div></div>
+                <div class="metric-card success"><div class="value" id="whActiveValue">--</div><div class="label">有库存SKU货值</div></div>
+                <div class="metric-card warning"><div class="value" id="whZeroValue">--</div><div class="label">零库存SKU数</div></div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-box"><h4>SKU货值TOP20 (万元)</h4><canvas id="chartWhTop20"></canvas></div>
+                <div class="chart-box"><h4>仓库货值占比</h4><canvas id="chartWhPie"></canvas></div>
+            </div>
+            <div class="note-box">
+                <strong>口径说明：</strong><br>
+                现有库存货值 = Σ(正品库存 × 成本价)，来源于「库存查询」；<br>
+                在途货值 = Σ(采购金额明细)，来源于「采购单」中状态为已审核/部分入库的记录；<br>
+                有库存SKU货值 = 正品库存>0的SKU货值合计。
+            </div>
+            <h4 style="margin-top:20px; font-size:14px;">SKU货值明细表 <span style="font-size:12px;color:var(--text-light);">(按货值降序，展示前30行)</span><button class="export-btn" onclick="exportModuleCSV('warehouse')">⬇ 导出CSV</button></h4>
+            <div class="data-table-wrap">
+                <table class="data-table" id="warehouseTable">
+                    <thead><tr>
+                        <th>货品编码</th><th>货品名称</th><th>规格名称</th><th>仓库</th>
+                        <th>正品库存</th><th>成本价</th><th>货值(元)</th><th>采购在途</th>
+                    </tr></thead>
+                    <tbody id="warehouseTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 采购入库记录 -->
+        <div class="section" id="inbound">
+            <div class="section-title">📦 采购入库记录</div>
+            <div class="metrics-grid">
+                <div class="metric-card"><div class="value" id="inboundCount">--</div><div class="label">入库单总数</div></div>
+                <div class="metric-card"><div class="value" id="inboundAmount">--</div><div class="label">入库总金额</div></div>
+                <div class="metric-card success"><div class="value" id="inboundQty">--</div><div class="label">入库总数量</div></div>
+            </div>
+            <h4 style="margin-top:20px; font-size:14px;">入库明细表 <span style="font-size:12px;color:var(--text-light);">(展示前30行)</span><button class="export-btn" onclick="exportModuleCSV('inbound')">⬇ 导出CSV</button></h4>
+            <div class="data-table-wrap">
+                <table class="data-table" id="inboundTable">
+                    <thead><tr>
+                        <th>入库单号</th><th>采购单号</th><th>货品名称</th><th>规格名称</th>
+                        <th>入库仓</th><th>入库数量</th><th>入库价格</th><th>入库金额</th>
+                        <th>入库单状态</th><th>供应商</th><th>制单时间</th>
+                    </tr></thead>
+                    <tbody id="inboundTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ===== 全局数据存储 =====
+    let appData = {
+        purchaseOrders: [],   // 采购单数据
+        inboundRecords: [],   // 采购入库管理数据
+        inventory: []         // 库存查询数据
+    };
+    let charts = {};
+    let currentMetrics = {};   // 当前渲染的原始数值指标（用于对比快照）
+    let snapshots = [];        // 历史导入快照（含 IndexedDB 读取结果）
+    let moduleData = {};       // 各模块全量明细数据（用于按模块导出CSV）
+
+    // ===== 列名映射配置（精准匹配Excel表头）=====
+    const COLUMN_MAPS = {
+        // 采购单列名
+        purchaseOrder: {
+            seq: '序号', name: '货品名称', nameShort: '货品简称',
+            code: '货品编码', specName: '规格名称', specShort: '规格简称',
+            merchantCode: '商家编码', brand: '品牌',
+            orderNo: '采购单号', status: '采购单状态',
+            creator: '制单人', buyer: '采购员',
+            totalAmount: '采购总金额（元）', preDiscountAmount: '折前总金额',
+            warehouse: '收货仓', purchaseTime: '采购时间',
+            expectedArrival: '预计到货时间', createTime: '创建时间',
+            remark: '采购单备注', supplier: '供应商名称',
+            qty: '采购数量', pendingAmount: '待入库金额',
+            price: '采购价格', detailAmount: '采购金额（明细）',
+            inboundQty: '入库正品数量', inboundDefectQty: '入库次品数量',
+            cancelQty: '取消数量'
+        },
+        // 采购入库管理列名
+        inbound: {
+            seq: '序号', code: '货品编码', name: '货品名称',
+            nameShort: '货品简称', specName: '规格名称', specShort: '规格简称',
+            merchantCode: '商家编码', orderNo: '入库单号',
+            purchaseOrderNo: '采购单号', creator: '制单人', buyer: '采购员',
+            warehouse: '入库仓', type: '入库类型', freight: '邮费',
+            remark: '单据备注', createTime: '制单时间',
+            status: '入库单状态', totalAmount: '入库单总额',
+            qty: '入库数量', stockType: '库存属性',
+            price: '入库价格', amount: '入库金额', supplier: '供应商'
+        },
+        // 库存查询列名
+        inventory: {
+            seq: '序号', code: '货品编码', name: '货品名称',
+            nameShort: '货品简称', merchantCode: '商家编码',
+            warehouse: '仓库', warehouseType: '仓库类型',
+            availableStock: '可用库存', pendingPurchase: '待采购量',
+            inTransit: '采购在途', goodStock: '正品库存',
+            defectStock: '次品库存', totalCost: '总成本',
+            costPrice: '成本价', specName: '规格名称'
+        }
+    };
+
+    // ===== 初始化 =====
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('currentDate').textContent = new Date().toLocaleDateString('zh-CN');
+        setTimeout(() => {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }, 800);
+        loadSnapshots();   // 载入历史快照，若有≥2次则呈现对比
+    });
+
+    // ===== 文件导入处理 =====
+    function triggerImport() {
+        document.getElementById('fileInput').click();
+    }
+
+    // ===== 修复工作表 !ref：原始导出文件的 <dimension> 只声明了1列(A)，导致
+    //      SheetJS 的 sheet_to_json 只读取第1列。这里根据真实存在的单元格重算范围 =====
+    function fixSheetRange(ws) {
+        let minC = Infinity, maxC = -1, minR = Infinity, maxR = -1;
+        Object.keys(ws).forEach(function (k) {
+            const m = /^([A-Z]+)([0-9]+)$/.exec(k);
+            if (!m) return;
+            const c = XLSX.utils.decode_col(m[1]);
+            const r = parseInt(m[2], 10);
+            if (c < minC) minC = c;
+            if (c > maxC) maxC = c;
+            if (r < minR) minR = r;
+            if (r > maxR) maxR = r;
+        });
+        if (minC <= maxC && minR <= maxR) {
+            ws['!ref'] = XLSX.utils.encode_range({
+                s: { r: minR - 1, c: minC },
+                e: { r: maxR - 1, c: maxC }
+            });
+        }
+    }
+
+    function handleFileImport(event) {
+        const files = event.target.files;
+        if (!files.length) return;
+
+        let processed = 0;
+        const total = files.length;
+        const loadedTypes = [];
+
+        Array.from(files).forEach(file => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    fixSheetRange(firstSheet); // 修复原始导出文件 <dimension> 只声明1列导致的列丢失
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+                    // 根据文件名或列名自动识别文件类型
+                    const fileType = detectFileType(jsonData, file.name);
+
+                    if (fileType === 'purchaseOrder') {
+                        appData.purchaseOrders = jsonData;
+                        loadedTypes.push('采购单');
+                    } else if (fileType === 'inbound') {
+                        appData.inboundRecords = jsonData;
+                        loadedTypes.push('采购入库管理');
+                    } else if (fileType === 'inventory') {
+                        appData.inventory = jsonData;
+                        loadedTypes.push('库存查询');
+                    } else {
+                        console.warn('无法识别的文件类型:', file.name);
+                    }
+                } catch (err) {
+                    console.error('文件解析错误:', file.name, err);
+                    showToast(`文件 "${file.name}" 解析失败：${err.message}`, 'error');
+                } finally {
+                    processed++;
+                    if (processed === total) {
+                        refreshData();
+                        saveCurrentSnapshot();   // 每次完整导入后保存快照，用于连续两次导入的对比
+                        if (loadedTypes.length) {
+                            showToast('已导入：' + loadedTypes.join('、'));
+                        } else {
+                            showToast('未识别到有效数据文件，请确认文件格式', 'error');
+                        }
+                    }
+                }
+            };
+            reader.onerror = function() {
+                showToast(`文件 "${file.name}" 读取失败`, 'error');
+                processed++;
+                if (processed === total) refreshData();
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // 重置input以允许重复导入同一文件
+        event.target.value = '';
+    }
+
+    // ===== 文件类型自动检测 =====
+    function detectFileType(data, fileName) {
+        if (!data.length) return null;
+        const headers = Object.keys(data[0]);
+
+        // 通过文件名判断
+        if (fileName.includes('采购单') && !fileName.includes('入库')) return 'purchaseOrder';
+        if (fileName.includes('入库')) return 'inbound';
+        if (fileName.includes('库存')) return 'inventory';
+
+        // 通过列名判断
+        if (headers.includes('采购单状态') && headers.includes('采购总金额（元）')) return 'purchaseOrder';
+        if (headers.includes('入库单号') && headers.includes('入库单状态')) return 'inbound';
+        if (headers.includes('可用库存') && headers.includes('成本价')) return 'inventory';
+
+        return null;
+    }
+
+    // ===== 提示气泡 =====
+    function showToast(message, type = 'success') {
+        let toast = document.getElementById('toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'toast';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.className = 'toast show ' + type;
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // ===== 刷新数据 & 渲染 =====
+    function refreshData() {
+        currentMetrics = {};   // 重置指标，重新计算
+        moduleData = {};       // 重置模块明细数据
+        const inv = appData.inventory;
+        const po = appData.purchaseOrders;
+        const ib = appData.inboundRecords;
+
+        const totalRecords = inv.length + po.length + ib.length;
+        document.getElementById('recordCount').textContent = totalRecords.toLocaleString();
+
+        if (totalRecords === 0) {
+            document.getElementById('statusText').textContent = '等待导入数据...';
+            document.getElementById('statusDot').className = 'status-dot warning';
+            return;
+        }
+
+        document.getElementById('statusText').textContent =
+            `数据已加载 | 库存:${inv.length}条 | 采购单:${po.length}条 | 入库:${ib.length}条`;
+        document.getElementById('statusDot').className = 'status-dot';
+
+        renderInventorySection(inv);
+        renderTodoSection(inv);
+        renderTransitSection(po);
+        renderWarehouseSection(inv, po);
+        renderInboundSection(ib);
+    }
+
+    // ===== 清空全部数据（刷新数据 → 清零）=====
+    async function clearAllData() {
+        const hasData = appData.inventory.length || appData.purchaseOrders.length ||
+                        appData.inboundRecords.length || snapshots.length;
+        if (hasData && !confirm('确定清空全部已导入数据与历史对比快照？此操作不可恢复。')) return;
+
+        // 1) 清空内存数据
+        appData = { purchaseOrders: [], inboundRecords: [], inventory: [] };
+        currentMetrics = {};
+        snapshots = [];
+        moduleData = {};
+
+        // 2) 清空 IndexedDB 持久化快照
+        try {
+            const db = await openDB();
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction(CMP_STORE, 'readwrite');
+                tx.objectStore(CMP_STORE).clear();
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error);
+            });
+            db.close();
+        } catch (e) {
+            console.warn('清空快照失败:', e);
+        }
+
+        // 3) 指标卡清零
+        const zeroMetrics = {
+            invValue: '0.00元', invTotalValue: '0.00元', invSkuCount: '0',
+            invNegativeCount: '0', invStagnantCount: '0', invHealthyCount: '0',
+            todoP0: '0', todoP1: '0', todoP2: '0', todoTotal: '0',
+            transitOrders: '0', transitAmount: '0.00元', transitDelayed: '0', transitDelayedOrders: '0',
+            whCurrentValue: '0.00元', whTransitValue: '0.00元', whActiveValue: '0.00元', whZeroValue: '0',
+            inboundCount: '0', inboundAmount: '0.00元', inboundQty: '0'
+        };
+        Object.keys(zeroMetrics).forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = zeroMetrics[id];
+        });
+
+        // 4) 明细表清空
+        ['inventoryTableBody', 'todoTableBody', 'transitTableBody', 'warehouseTableBody', 'inboundTableBody'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '';
+        });
+
+        // 5) 图表销毁并清空画布
+        Object.keys(charts).forEach(id => { if (charts[id]) charts[id].destroy(); });
+        charts = {};
+        document.querySelectorAll('canvas').forEach(c => {
+            const ctx = c.getContext('2d');
+            if (ctx) ctx.clearRect(0, 0, c.width, c.height);
+        });
+
+        // 6) 对比区隐藏并清空内容
+        const cmp = document.getElementById('compareSection');
+        if (cmp) cmp.style.display = 'none';
+        const cmpTable = document.getElementById('compareTableBody');
+        if (cmpTable) cmpTable.innerHTML = '';
+        const cmpSku = document.getElementById('cmpSkuBody');
+        if (cmpSku) cmpSku.innerHTML = '';
+        ['compareLabel', 'cmpSkuAdded', 'cmpSkuRemoved'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '';
+        });
+
+        // 7) 状态栏复位
+        document.getElementById('recordCount').textContent = '0';
+        document.getElementById('statusText').textContent = '等待导入数据...';
+        document.getElementById('statusDot').className = 'status-dot warning';
+
+        showToast('已清空全部数据');
+    }
+
+    // ===== 库存健康度 =====
+    function renderInventorySection(data) {
+        if (!data.length) return;
+
+        let totalValue = 0, totalValueWithTransit = 0, negativeCount = 0, zeroCount = 0, healthyCount = 0;
+        const warehouseMap = {};
+        const topItems = [];
+
+        data.forEach(row => {
+            const goodStock = parseFloat(row[COLUMN_MAPS.inventory.goodStock]) || 0;
+            const costPrice = parseFloat(row[COLUMN_MAPS.inventory.costPrice]) || 0;
+            const available = parseFloat(row[COLUMN_MAPS.inventory.availableStock]) || 0;
+            const inTransit = parseFloat(row[COLUMN_MAPS.inventory.inTransit]) || 0;
+            const warehouse = row[COLUMN_MAPS.inventory.warehouse] || '未知';
+            const itemValue = goodStock * costPrice;
+
+            totalValue += itemValue;
+            totalValueWithTransit += itemValue + inTransit * costPrice;
+
+            if (available < 0) negativeCount++;
+            else if (available <= 0) zeroCount++;
+            else healthyCount++;
+
+            warehouseMap[warehouse] = (warehouseMap[warehouse] || 0) + itemValue;
+
+            if (itemValue > 0) {
+                topItems.push({
+                    code: row[COLUMN_MAPS.inventory.code],
+                    name: row[COLUMN_MAPS.inventory.name],
+                    spec: row[COLUMN_MAPS.inventory.specName],
+                    warehouse: warehouse,
+                    available: available,
+                    goodStock: goodStock,
+                    defectStock: parseFloat(row[COLUMN_MAPS.inventory.defectStock]) || 0,
+                    inTransit: parseFloat(row[COLUMN_MAPS.inventory.inTransit]) || 0,
+                    costPrice: costPrice,
+                    value: itemValue
+                });
+            }
+        });
+
+        topItems.sort((a, b) => b.value - a.value);
+
+        // 更新指标卡
+        document.getElementById('invValue').textContent = formatWan(totalValue);
+        document.getElementById('invTotalValue').textContent = formatWan(totalValueWithTransit);
+        document.getElementById('invSkuCount').textContent = data.length.toLocaleString();
+        document.getElementById('invStagnantCount').textContent = zeroCount.toLocaleString();
+        document.getElementById('invNegativeCount').textContent = negativeCount.toLocaleString();
+        document.getElementById('invHealthyCount').textContent = healthyCount.toLocaleString();
+
+        currentMetrics.invValue = totalValue;
+        currentMetrics.invTotalValue = totalValueWithTransit;
+        currentMetrics.invSkuCount = data.length;
+        currentMetrics.invNegativeCount = negativeCount;
+        currentMetrics.invStagnantCount = zeroCount;
+        currentMetrics.invHealthyCount = healthyCount;
+
+        // 图表
+        renderChart('chartInvStatus', 'doughnut', {
+            labels: ['健康(库存>0)', '零库存', '负库存'],
+            datasets: [{
+                data: [healthyCount, zeroCount, negativeCount],
+                backgroundColor: ['#4CAF50', '#FF9800', '#F44336']
+            }]
+        });
+
+        const whLabels = Object.keys(warehouseMap);
+        renderChart('chartWarehouse', 'bar', {
+            labels: whLabels,
+            datasets: [{
+                label: '货值(万元)',
+                data: whLabels.map(k => (warehouseMap[k] / 10000).toFixed(2)),
+                backgroundColor: '#E8734A'
+            }]
+        }, { indexAxis: 'y' });
+
+        const top10 = topItems.slice(0, 10);
+        renderChart('chartInvTop10', 'bar', {
+            labels: top10.map(i => (i.name || '').substring(0, 8)),
+            datasets: [{
+                label: '货值(万元)',
+                data: top10.map(i => (i.value / 10000).toFixed(2)),
+                backgroundColor: '#F5A623'
+            }]
+        }, { indexAxis: 'y' });
+
+        moduleData.inventory = {
+            headers: ['货品编码', '货品名称', '规格名称', '仓库', '可用库存', '正品库存', '次品库存', '采购在途', '成本价', '货值(元)'],
+            rows: topItems.map(i => [i.code, i.name, i.spec, i.warehouse, i.available, i.goodStock, i.defectStock, i.inTransit, i.costPrice.toFixed(2), i.value.toFixed(2)])
+        };
+
+        // 表格
+        const tbody = document.getElementById('inventoryTableBody');
+        tbody.innerHTML = topItems.slice(0, 30).map(item => `<tr>
+            <td>${item.code}</td><td>${item.name}</td><td>${item.spec}</td>
+            <td>${item.warehouse}</td><td>${item.available}</td><td>${item.goodStock}</td>
+            <td>${item.defectStock}</td><td>${item.inTransit}</td>
+            <td>${item.costPrice.toFixed(2)}</td><td>${item.value.toFixed(2)}</td>
+        </tr>`).join('');
+    }
+
+    // ===== 待下单清单 =====
+    function renderTodoSection(data) {
+        if (!data.length) return;
+
+        const p0List = [], p1List = [], p2List = [];
+
+        data.forEach(row => {
+            const available = parseFloat(row[COLUMN_MAPS.inventory.availableStock]) || 0;
+            const pendingPurchase = parseFloat(row[COLUMN_MAPS.inventory.pendingPurchase]) || 0;
+            const inTransit = parseFloat(row[COLUMN_MAPS.inventory.inTransit]) || 0;
+            const goodStock = parseFloat(row[COLUMN_MAPS.inventory.goodStock]) || 0;
+            const costPrice = parseFloat(row[COLUMN_MAPS.inventory.costPrice]) || 0;
+
+            const item = {
+                code: row[COLUMN_MAPS.inventory.code],
+                name: row[COLUMN_MAPS.inventory.name],
+                spec: row[COLUMN_MAPS.inventory.specName],
+                available, goodStock, pendingPurchase, inTransit, costPrice
+            };
+
+            if (available < 0) { p0List.push(item); }
+            else if (available === 0 && pendingPurchase > 0) { p1List.push(item); }
+            else if (pendingPurchase > 0 && available > 0) { p2List.push(item); }
+        });
+
+        const total = p0List.length + p1List.length + p2List.length;
+
+        document.getElementById('todoP0').textContent = p0List.length;
+        document.getElementById('todoP1').textContent = p1List.length;
+        document.getElementById('todoP2').textContent = p2List.length;
+        document.getElementById('todoTotal').textContent = total;
+
+        currentMetrics.todoP0 = p0List.length;
+        currentMetrics.todoP1 = p1List.length;
+        currentMetrics.todoP2 = p2List.length;
+        currentMetrics.todoTotal = total;
+
+        renderChart('chartPriority', 'doughnut', {
+            labels: ['P0紧急', 'P1高优', 'P2中优'],
+            datasets: [{
+                data: [p0List.length, p1List.length, p2List.length],
+                backgroundColor: ['#F44336', '#FF9800', '#FFC107']
+            }]
+        });
+
+        const p0Qty = p0List.reduce((s, i) => s + Math.abs(i.available) + i.pendingPurchase, 0);
+        const p1Qty = p1List.reduce((s, i) => s + i.pendingPurchase, 0);
+        const p2Qty = p2List.reduce((s, i) => s + i.pendingPurchase, 0);
+
+        renderChart('chartPriorityQty', 'bar', {
+            labels: ['P0紧急', 'P1高优', 'P2中优'],
+            datasets: [{
+                label: '建议采购量',
+                data: [p0Qty, p1Qty, p2Qty],
+                backgroundColor: ['#F44336', '#FF9800', '#FFC107']
+            }]
+        });
+
+        // 表格
+        const allItems = [
+            ...p0List.map(i => ({...i, priority: 'P0'})),
+            ...p1List.map(i => ({...i, priority: 'P1'})),
+            ...p2List.map(i => ({...i, priority: 'P2'}))
+        ];
+
+        moduleData.todo = {
+            headers: ['优先级', '货品编码', '货品名称', '规格名称', '可用库存', '正品库存', '待采购量', '采购在途', '成本价'],
+            rows: allItems.map(i => [i.priority, i.code, i.name, i.spec, i.available, i.goodStock, i.pendingPurchase, i.inTransit, i.costPrice.toFixed(2)])
+        };
+
+        const tbody = document.getElementById('todoTableBody');
+        tbody.innerHTML = allItems.slice(0, 30).map(item => `<tr>
+            <td><span class="badge badge-${item.priority.toLowerCase()}">${item.priority}</span></td>
+            <td>${item.code}</td><td>${item.name}</td><td>${item.spec}</td>
+            <td>${item.available}</td><td>${item.goodStock}</td>
+            <td>${item.pendingPurchase}</td><td>${item.inTransit}</td>
+            <td>${item.costPrice.toFixed(2)}</td>
+        </tr>`).join('');
+    }
+
+    // ===== 在途跟单 =====
+    function renderTransitSection(data) {
+        if (!data.length) return;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // 筛选在途订单：已审核 或 部分入库
+        const transitStatuses = ['已审核', '部分入库'];
+        const transitOrders = data.filter(row => {
+            const status = row[COLUMN_MAPS.purchaseOrder.status];
+            return transitStatuses.includes(status);
+        });
+
+        // 按采购单号去重统计
+        const orderMap = {};
+        let transitAmount = 0;
+        let delayedItems = [];
+        let delayedOrderSet = new Set();
+
+        transitOrders.forEach(row => {
+            const orderNo = row[COLUMN_MAPS.purchaseOrder.orderNo];
+            const qty = parseFloat(row[COLUMN_MAPS.purchaseOrder.qty]) || 0;
+            const inboundQty = parseFloat(row[COLUMN_MAPS.purchaseOrder.inboundQty]) || 0;
+            const amount = parseFloat(row[COLUMN_MAPS.purchaseOrder.detailAmount]) || 0;
+            const expectedStr = row[COLUMN_MAPS.purchaseOrder.expectedArrival];
+            const purchaseTimeStr = row[COLUMN_MAPS.purchaseOrder.purchaseTime];
+            const supplier = row[COLUMN_MAPS.purchaseOrder.supplier] || '';
+
+            transitAmount += amount;
+
+            if (!orderMap[orderNo]) {
+                orderMap[orderNo] = { amount: 0, items: 0 };
+            }
+            orderMap[orderNo].amount += amount;
+            orderMap[orderNo].items++;
+
+            // 判断延迟
+            let delayDays = 0;
+            let isDelayed = false;
+            if (expectedStr && inboundQty < qty) {
+                const expectedDate = parseDate(expectedStr);
+                if (expectedDate && expectedDate < today) {
+                    delayDays = Math.floor((today - expectedDate) / 86400000);
+                    isDelayed = true;
+                    delayedOrderSet.add(orderNo);
+                }
+            }
+
+            if (isDelayed || inboundQty < qty) {
+                delayedItems.push({
+                    orderNo,
+                    name: row[COLUMN_MAPS.purchaseOrder.name],
+                    spec: row[COLUMN_MAPS.purchaseOrder.specName],
+                    qty, inboundQty, amount,
+                    status: row[COLUMN_MAPS.purchaseOrder.status],
+                    supplier,
+                    purchaseTime: formatDate(purchaseTimeStr),
+                    expectedArrival: formatDate(expectedStr),
+                    delayDays
+                });
+            }
+        });
+
+        const orderCount = Object.keys(orderMap).length;
+
+        document.getElementById('transitOrders').textContent = orderCount;
+        document.getElementById('transitAmount').textContent = formatWan(transitAmount);
+        document.getElementById('transitDelayed').textContent = delayedItems.length;
+        document.getElementById('transitDelayedOrders').textContent = delayedOrderSet.size;
+
+        currentMetrics.transitOrders = orderCount;
+        currentMetrics.transitAmount = transitAmount;
+        currentMetrics.transitDelayed = delayedItems.length;
+        currentMetrics.transitDelayedOrders = delayedOrderSet.size;
+
+        // 状态分布图
+        const statusMap = {};
+        data.forEach(row => {
+            const status = row[COLUMN_MAPS.purchaseOrder.status] || '未知';
+            statusMap[status] = (statusMap[status] || 0) + 1;
+        });
+
+        renderChart('chartOrderStatus', 'doughnut', {
+            labels: Object.keys(statusMap),
+            datasets: [{
+                data: Object.values(statusMap),
+                backgroundColor: ['#4CAF50', '#FF9800', '#2196F3', '#F44336', '#9C27B0', '#607D8B']
+            }]
+        });
+
+        // 供应商TOP10
+        const supplierMap = {};
+        transitOrders.forEach(row => {
+            const supplier = row[COLUMN_MAPS.purchaseOrder.supplier] || '未知';
+            const amount = parseFloat(row[COLUMN_MAPS.purchaseOrder.detailAmount]) || 0;
+            supplierMap[supplier] = (supplierMap[supplier] || 0) + amount;
+        });
+        const supplierTop = Object.entries(supplierMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+        renderChart('chartTransitSupplier', 'bar', {
+            labels: supplierTop.map(s => s[0].substring(0, 8)),
+            datasets: [{
+                label: '金额(万元)',
+                data: supplierTop.map(s => (s[1] / 10000).toFixed(2)),
+                backgroundColor: '#E8734A'
+            }]
+        }, { indexAxis: 'y' });
+
+        // 表格
+        delayedItems.sort((a, b) => b.delayDays - a.delayDays);
+        moduleData.transit = {
+            headers: ['采购单号', '货品名称', '规格名称', '采购数量', '已入库数量', '采购金额', '采购单状态', '供应商', '采购时间', '预计到货', '延迟天数'],
+            rows: delayedItems.map(i => [i.orderNo, i.name, i.spec, i.qty, i.inboundQty, i.amount.toFixed(2), i.status, i.supplier, i.purchaseTime, i.expectedArrival, i.delayDays > 0 ? (i.delayDays + '天') : '-'])
+        };
+        const tbody = document.getElementById('transitTableBody');
+        tbody.innerHTML = delayedItems.slice(0, 30).map(item => `<tr>
+            <td>${item.orderNo}</td><td>${item.name}</td><td>${item.spec}</td>
+            <td>${item.qty}</td><td>${item.inboundQty}</td>
+            <td>${item.amount.toFixed(2)}</td>
+            <td><span class="badge ${item.delayDays > 0 ? 'badge-delay' : 'badge-warn'}">${item.status}</span></td>
+            <td>${item.supplier}</td><td>${item.purchaseTime}</td><td>${item.expectedArrival}</td>
+            <td>${item.delayDays > 0 ? '<span style="color:var(--danger);font-weight:700;">' + item.delayDays + '天</span>' : '-'}</td>
+        </tr>`).join('');
+    }
+
+    // ===== 仓库货值 =====
+    function renderWarehouseSection(invData, poData) {
+        if (!invData.length) return;
+
+        let currentValue = 0, activeValue = 0, zeroCount = 0;
+        const topItems = [];
+        const warehouseValueMap = {};
+
+        invData.forEach(row => {
+            const goodStock = parseFloat(row[COLUMN_MAPS.inventory.goodStock]) || 0;
+            const costPrice = parseFloat(row[COLUMN_MAPS.inventory.costPrice]) || 0;
+            const warehouse = row[COLUMN_MAPS.inventory.warehouse] || '未知';
+            const inTransit = parseFloat(row[COLUMN_MAPS.inventory.inTransit]) || 0;
+            const itemValue = goodStock * costPrice;
+
+            currentValue += itemValue;
+            warehouseValueMap[warehouse] = (warehouseValueMap[warehouse] || 0) + itemValue;
+
+            if (goodStock > 0) {
+                activeValue += itemValue;
+                topItems.push({
+                    code: row[COLUMN_MAPS.inventory.code],
+                    name: row[COLUMN_MAPS.inventory.name],
+                    spec: row[COLUMN_MAPS.inventory.specName],
+                    warehouse, goodStock, costPrice,
+                    value: itemValue, inTransit
+                });
+            } else {
+                zeroCount++;
+            }
+        });
+
+        // 在途货值从采购单计算
+        let transitValue = 0;
+        const transitStatuses = ['已审核', '部分入库'];
+        poData.forEach(row => {
+            if (transitStatuses.includes(row[COLUMN_MAPS.purchaseOrder.status])) {
+                transitValue += parseFloat(row[COLUMN_MAPS.purchaseOrder.detailAmount]) || 0;
+            }
+        });
+
+        document.getElementById('whCurrentValue').textContent = formatWan(currentValue);
+        document.getElementById('whTransitValue').textContent = formatWan(transitValue);
+        document.getElementById('whActiveValue').textContent = formatWan(activeValue);
+        document.getElementById('whZeroValue').textContent = zeroCount.toLocaleString();
+
+        currentMetrics.whCurrentValue = currentValue;
+        currentMetrics.whTransitValue = transitValue;
+        currentMetrics.whActiveValue = activeValue;
+        currentMetrics.whZeroValue = zeroCount;
+
+        topItems.sort((a, b) => b.value - a.value);
+        const top20 = topItems.slice(0, 20);
+
+        renderChart('chartWhTop20', 'bar', {
+            labels: top20.map(i => (i.name || '').substring(0, 8)),
+            datasets: [{
+                label: '货值(万元)',
+                data: top20.map(i => (i.value / 10000).toFixed(2)),
+                backgroundColor: '#E8734A'
+            }]
+        }, { indexAxis: 'y' });
+
+        const whLabels = Object.keys(warehouseValueMap);
+        renderChart('chartWhPie', 'pie', {
+            labels: whLabels,
+            datasets: [{
+                data: whLabels.map(k => (warehouseValueMap[k] / 10000).toFixed(2)),
+                backgroundColor: ['#E8734A', '#F5A623', '#4CAF50', '#2196F3', '#9C27B0', '#607D8B']
+            }]
+        });
+
+        moduleData.warehouse = {
+            headers: ['货品编码', '货品名称', '规格名称', '仓库', '正品库存', '成本价', '货值(元)', '采购在途'],
+            rows: topItems.map(i => [i.code, i.name, i.spec, i.warehouse, i.goodStock, i.costPrice.toFixed(2), i.value.toFixed(2), i.inTransit])
+        };
+
+        // 表格
+        const tbody = document.getElementById('warehouseTableBody');
+        tbody.innerHTML = topItems.slice(0, 30).map(item => `<tr>
+            <td>${item.code}</td><td>${item.name}</td><td>${item.spec}</td>
+            <td>${item.warehouse}</td><td>${item.goodStock}</td>
+            <td>${item.costPrice.toFixed(2)}</td><td>${item.value.toFixed(2)}</td>
+            <td>${item.inTransit}</td>
+        </tr>`).join('');
+    }
+
+    // ===== 采购入库记录 =====
+    function renderInboundSection(data) {
+        if (!data.length) return;
+
+        let totalAmount = 0, totalQty = 0;
+        const orderSet = new Set();
+
+        data.forEach(row => {
+            // 入库金额/数量/价格都可能以 "90: 135" 多规格形式存储，需逐项求和
+            const amount = sumColon(row[COLUMN_MAPS.inbound.amount]);
+            const qty = sumColon(row[COLUMN_MAPS.inbound.qty]);
+            totalAmount += amount;
+            totalQty += qty;
+            orderSet.add(row[COLUMN_MAPS.inbound.orderNo]);
+        });
+
+        document.getElementById('inboundCount').textContent = orderSet.size.toLocaleString();
+        document.getElementById('inboundAmount').textContent = formatWan(totalAmount);
+        document.getElementById('inboundQty').textContent = totalQty.toLocaleString();
+
+        currentMetrics.inboundCount = orderSet.size;
+        currentMetrics.inboundAmount = totalAmount;
+        currentMetrics.inboundQty = totalQty;
+
+        moduleData.inbound = {
+            headers: ['入库单号', '采购单号', '货品名称', '规格名称', '入库仓', '入库数量', '入库价格', '入库金额', '入库单状态', '供应商', '制单时间'],
+            rows: data.map(row => [row[COLUMN_MAPS.inbound.orderNo], row[COLUMN_MAPS.inbound.purchaseOrderNo], row[COLUMN_MAPS.inbound.name], row[COLUMN_MAPS.inbound.specName], row[COLUMN_MAPS.inbound.warehouse], row[COLUMN_MAPS.inbound.qty], row[COLUMN_MAPS.inbound.price], row[COLUMN_MAPS.inbound.amount], row[COLUMN_MAPS.inbound.status], row[COLUMN_MAPS.inbound.supplier], formatDate(row[COLUMN_MAPS.inbound.createTime])])
+        };
+
+        // 表格
+        const tbody = document.getElementById('inboundTableBody');
+        tbody.innerHTML = data.slice(0, 30).map(row => {
+            // 表格直接展示原始值，多规格单元格如实显示 "90: 135"
+            const qty = row[COLUMN_MAPS.inbound.qty];
+            const price = row[COLUMN_MAPS.inbound.price];
+            const amount = row[COLUMN_MAPS.inbound.amount];
+            return `<tr>
+                <td>${row[COLUMN_MAPS.inbound.orderNo]}</td>
+                <td>${row[COLUMN_MAPS.inbound.purchaseOrderNo]}</td>
+                <td>${row[COLUMN_MAPS.inbound.name]}</td>
+                <td>${row[COLUMN_MAPS.inbound.specName]}</td>
+                <td>${row[COLUMN_MAPS.inbound.warehouse]}</td>
+                <td>${qty}</td>
+                <td>${price}</td>
+                <td>${amount}</td>
+                <td>${row[COLUMN_MAPS.inbound.status]}</td>
+                <td>${row[COLUMN_MAPS.inbound.supplier]}</td>
+                <td>${formatDate(row[COLUMN_MAPS.inbound.createTime])}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // ===== 工具函数 =====
+    function formatWan(value) {
+        if (Math.abs(value) >= 10000) return (value / 10000).toFixed(2) + '万';
+        return value.toFixed(2) + '元';
+    }
+
+    // 汇总多规格单元格 "90: 135" / "2: 3" 格式的所有数值（采购入库明细里同一行可能含多笔）
+    function sumColon(v) {
+        if (v == null) return 0;
+        const s = String(v).trim();
+        if (!s) return 0;
+        if (!s.includes(':')) return parseFloat(s) || 0;
+        return s.split(':').reduce((sum, p) => sum + (parseFloat(p.trim()) || 0), 0);
+    }
+
+    function parseDate(str) {
+        if (!str) return null;
+        if (str instanceof Date) return str;
+        const d = new Date(str);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    function formatDate(str) {
+        if (!str) return '-';
+        const d = parseDate(str);
+        if (!d) return String(str).substring(0, 10);
+        return d.toLocaleDateString('zh-CN');
+    }
+
+    function renderChart(canvasId, type, data, options = {}) {
+        if (charts[canvasId]) charts[canvasId].destroy();
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+        charts[canvasId] = new Chart(ctx, {
+            type: type,
+            data: data,
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { position: type === 'doughnut' || type === 'pie' ? 'bottom' : 'top', labels: { font: { size: 11 } } }
+                },
+                scales: type === 'doughnut' || type === 'pie' ? {} : {
+                    x: { ticks: { font: { size: 10 } } },
+                    y: { ticks: { font: { size: 10 } } }
+                },
+                ...options
+            }
+        });
+    }
+
+    // ===== 导出功能 =====
+    function exportExcel() {
+        if (!appData.inventory.length && !appData.purchaseOrders.length) {
+            alert('请先导入数据'); return;
+        }
+        const wb = XLSX.utils.book_new();
+        if (appData.inventory.length) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(appData.inventory), '库存查询');
+        }
+        if (appData.purchaseOrders.length) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(appData.purchaseOrders), '采购单');
+        }
+        if (appData.inboundRecords.length) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(appData.inboundRecords), '采购入库');
+        }
+        XLSX.writeFile(wb, '供应链看板数据导出.xlsx');
+    }
+
+    // ===== 按模块导出CSV =====
+    const MODULE_NAMES = {
+        inventory: '库存健康度_明细',
+        todo: '待下单清单',
+        transit: '在途跟单',
+        warehouse: '仓库货值',
+        inbound: '采购入库记录'
+    };
+
+    function downloadCSV(filename, headers, rows) {
+        const BOM = '﻿';
+        const esc = v => {
+            const s = (v == null) ? '' : String(v);
+            return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        };
+        const lines = [headers.map(esc).join(',')].concat(rows.map(r => r.map(esc).join(',')));
+        const blob = new Blob([BOM + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function exportModuleCSV(key) {
+        const m = moduleData[key];
+        if (!m || !m.rows.length) { showToast('该模块暂无数据可导出', 'error'); return; }
+        downloadCSV((MODULE_NAMES[key] || key) + '.csv', m.headers, m.rows);
+        showToast('已导出：' + (MODULE_NAMES[key] || key) + '.csv');
+    }
+
+    function exportPDF() {
+        alert('请使用浏览器打印功能 (Ctrl+P) 导出PDF');
+        window.print();
+    }
+
+    // ===== 数据对比（IndexedDB 持久化快照）=====
+    const CMP_DB = 'supplyChainBoard';
+    const CMP_STORE = 'snapshots';
+
+    function openDB() {
+        return new Promise((resolve, reject) => {
+            if (typeof indexedDB === 'undefined') { reject(new Error('IndexedDB 不可用')); return; }
+            const req = indexedDB.open(CMP_DB, 1);
+            req.onupgradeneeded = e => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(CMP_STORE)) {
+                    db.createObjectStore(CMP_STORE, { keyPath: 'id' });
+                }
+            };
+            req.onsuccess = e => resolve(e.target.result);
+            req.onerror = e => reject(e.target.error);
+        });
+    }
+
+    function buildSkuSummary() {
+        return appData.inventory.map(row => ({
+            code: row[COLUMN_MAPS.inventory.code] || '',
+            name: row[COLUMN_MAPS.inventory.name] || '',
+            goodStock: parseFloat(row[COLUMN_MAPS.inventory.goodStock]) || 0,
+            available: parseFloat(row[COLUMN_MAPS.inventory.availableStock]) || 0,
+            costPrice: parseFloat(row[COLUMN_MAPS.inventory.costPrice]) || 0
+        }));
+    }
+
+    async function saveCurrentSnapshot() {
+        if (!appData.inventory.length) return;   // 以库存为核心，无库存数据不建档
+        const snapshot = {
+            id: Date.now(),
+            label: '第' + (snapshots.length + 1) + '次导入',
+            savedAt: new Date(),
+            metrics: JSON.parse(JSON.stringify(currentMetrics || {})),
+            skus: buildSkuSummary()
+        };
+        snapshots.push(snapshot);   // 先入内存，保证连续导入立即触发对比
+        renderComparison();
+        try {
+            const db = await openDB();
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction(CMP_STORE, 'readwrite');
+                tx.objectStore(CMP_STORE).put(snapshot);
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error);
+            });
+            db.close();
+        } catch (e) {
+            console.warn('快照持久化失败(已降级为本次会话内存对比):', e);
+        }
+    }
+
+    async function loadSnapshots() {
+        try {
+            const db = await openDB();
+            const list = await new Promise((resolve, reject) => {
+                const tx = db.transaction(CMP_STORE, 'readonly');
+                const req = tx.objectStore(CMP_STORE).getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => reject(req.error);
+            });
+            db.close();
+            snapshots = list.sort((a, b) => a.id - b.id);
+        } catch (e) {
+            console.warn('读取历史快照失败:', e);
+            snapshots = [];
+        }
+        renderComparison();
+    }
+
+    function renderComparison() {
+        const box = document.getElementById('compareSection');
+        if (!box) return;
+        if (snapshots.length < 2) {
+            box.style.display = 'none';
+            return;
+        }
+        box.style.display = 'block';
+        const prev = snapshots[snapshots.length - 2];
+        const curr = snapshots[snapshots.length - 1];
+        document.getElementById('compareLabel').textContent =
+            prev.label + '  →  ' + curr.label + '（' + formatDate(prev.savedAt) + ' vs ' + formatDate(curr.savedAt) + '）';
+
+        const money = v => formatWan(v);
+        const int = v => (v || 0).toLocaleString();
+        const rows = [
+            ['现有库存货值', 'invValue', money],
+            ['总货值(含在途)', 'invTotalValue', money],
+            ['有效SKU数', 'invSkuCount', int],
+            ['负库存SKU数', 'invNegativeCount', int],
+            ['零库存SKU数', 'invStagnantCount', int],
+            ['健康SKU数', 'invHealthyCount', int],
+            ['待下单P0', 'todoP0', int],
+            ['待下单P1', 'todoP1', int],
+            ['待下单P2', 'todoP2', int],
+            ['待下单合计', 'todoTotal', int],
+            ['在途采购单数', 'transitOrders', int],
+            ['在途采购金额', 'transitAmount', money],
+            ['延迟单数', 'transitDelayedOrders', int],
+            ['入库单总数', 'inboundCount', int],
+            ['入库总金额', 'inboundAmount', money],
+            ['入库总数量', 'inboundQty', int]
+        ];
+
+        document.getElementById('compareTableBody').innerHTML = rows.map(([label, key, fmt]) => {
+            const a = prev.metrics[key] || 0;
+            const b = curr.metrics[key] || 0;
+            const delta = b - a;
+            const rate = a !== 0 ? ((delta / a) * 100).toFixed(1) + '%' : (b !== 0 ? '新增' : '—');
+            const deltaStr = (delta > 0 ? '+' : '') + fmt(delta);
+            const cls = delta > 0 ? 'cmp-up' : (delta < 0 ? 'cmp-down' : 'cmp-flat');
+            return `<tr>
+                <td>${label}</td>
+                <td>${fmt(a)}</td>
+                <td>${fmt(b)}</td>
+                <td class="${cls}">${deltaStr}</td>
+                <td class="${cls}">${rate}</td>
+            </tr>`;
+        }).join('');
+
+        renderSkuDiff(prev, curr);
+    }
+
+    function renderSkuDiff(prev, curr) {
+        const mapA = {};
+        (prev.skus || []).forEach(s => { mapA[s.code] = s; });
+        const curCodes = new Set((curr.skus || []).map(s => s.code));
+        const added = (curr.skus || []).filter(s => !mapA[s.code]).length;
+        const removed = (prev.skus || []).filter(s => !curCodes.has(s.code)).length;
+        document.getElementById('cmpSkuAdded').textContent = added;
+        document.getElementById('cmpSkuRemoved').textContent = removed;
+
+        const changes = [];
+        (curr.skus || []).forEach(s => {
+            const before = mapA[s.code];
+            const beforeValue = before ? before.goodStock * before.costPrice : 0;
+            const afterValue = s.goodStock * s.costPrice;
+            changes.push({
+                code: s.code, name: s.name,
+                stockDelta: s.goodStock - (before ? before.goodStock : 0),
+                valueDelta: afterValue - beforeValue
+            });
+        });
+        changes.sort((a, b) => Math.abs(b.valueDelta) - Math.abs(a.valueDelta));
+        document.getElementById('cmpSkuBody').innerHTML = changes.slice(0, 10).map(c => {
+            const cls = c.valueDelta > 0 ? 'cmp-up' : (c.valueDelta < 0 ? 'cmp-down' : 'cmp-flat');
+            const sSign = c.stockDelta > 0 ? '+' : '';
+            const vSign = c.valueDelta > 0 ? '+' : '';
+            return `<tr>
+                <td>${c.code}</td><td>${c.name}</td>
+                <td class="${cls}">${sSign}${c.stockDelta.toLocaleString()}</td>
+                <td class="${cls}">${vSign}${formatWan(c.valueDelta)}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // ===== 导航高亮 =====
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+    </script>
+</body>
+</html>
